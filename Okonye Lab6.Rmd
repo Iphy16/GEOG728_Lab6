@@ -1,0 +1,185 @@
+---
+title: 'Lab #6'
+output: html_document
+date: "2024-02-28"
+---
+
+## Introduction:
+
+To begin the lab 6 tasks, I first loaded the pacman library and went ahead to load othe required libraries. Next, I imported my 3 dataset which I will be making use of for this lab (Food Atlas, US State Boundary and US 2010 Census Tract dataset). I tidied up my dataset by removing variables which I will not be using in the analysis from the food atlas dataset. Looking at the structure of my data, I have 2 spatial data (US states and US 2010 Census tract) and one non-spatial data (Food Atlas). Seeing as I will be mapping the food accessibility across census tracts, I joined the census tract spatial data with the non spatial data,using the GEOID10 variable, to create a new spatial data object suitable for the task. I also created a new character variable using the binary values in LAhalfand10 variable to stand for Low acess and not low access. Finally, I created a new spatial data object with the four states that will be used for analysis. 
+
+*I initially downloaded the wrong census data and when through a tough time trying to create avariable with which I could join the spatial US state data and the other data objects and because it took me a lot of time to figure it out, I thought to leave the code here so you could see it.*
+
+```{r warning = FALSE, message = FALSE, error = FALSE}
+library(pacman)
+p_load(sf, tidyverse, ggspatial, tmap, spData)
+
+FoodAtlas <- read_csv("FoodAtlas.csv")
+
+foodAtlas_main <- FoodAtlas %>% 
+  select(-(25:134))
+
+
+data("us_states")
+US_State1 <- us_states %>% filter(NAME %in% c("Kansas", "Missouri", "Oklahoma", "Nebraska"))
+
+
+US_2010_CT <- st_read("US_tract_2010.shp")
+
+
+# str(US_2010_CT)
+# str(foodAtlas_main)
+
+foodAtlas_sf <- left_join(US_2010_CT, foodAtlas_main, 
+                          by = c("GEOID10" = "CensusTract")) %>% 
+  mutate(FoodAccess = ifelse(LAhalfand10 == 1,"Low Access", "Not Low Access"))
+
+StateBoundary <- foodAtlas_sf %>% filter(State == c("Kansas", "Missoiri", "Oklahoma", "Nebraska"))
+
+st_crs(StateBoundary)
+
+
+
+
+# us_2010_CT_new <- US_2010_CT %>% 
+#   select_if(~any(!is.na(.))) %>% 
+#   mutate(CT = str_remove(GISJOIN, "G"),
+#          CT = paste0(substr(CT, 1, 2), substr(CT, 4, nchar(CT)))) %>%
+#   mutate(CensusTract = paste0(substr(CT, 1, 5), substr(CT, 7, nchar(CT))))
+
+```
+
+
+
+### Question 1:
+
+Using ggplot and sf, I created a map showing food accessibility across Census Tracts for the states of Kansas, Missouri, Oklahoma, and Nebraska. There were lots of NA values in the dataset and no values in Missouri. 
+
+```{r warning = FALSE, message = FALSE, error = FALSE}
+StateBoundary %>%
+  ggplot() +
+  geom_sf(aes(fill = FoodAccess), color = "white", size = 0.2) +
+  scale_fill_viridis_d(name = "Food Accessibility") +
+  labs(title = "Food Accessibility Across Census Tracts",
+       subtitle = "States: Kansas, Missouri, Oklahoma, Nebraska") +
+  theme_minimal() +
+  theme(axis.text = element_blank(), axis.title = element_blank(), legend.position = "right") +
+  geom_sf(data = US_State1, fill = NA, color = "black", size = 1) +
+  geom_sf_text(data = US_State1, aes(label = NAME, position = "jitter", label.size = 0.01)) +
+  theme(axis.text = element_blank())
+
+```
+
+
+### Question 2:
+
+For the state of Kansas, I generated a map to show the distribution of the low income tract (TractLOWI) based on food accessibility.
+
+```{r warning = FALSE, message = FALSE, error = FALSE}
+
+TLI_pt <- st_centroid(StateBoundary)
+
+StateBoundary %>%
+  filter(State == "Kansas") %>%
+  ggplot() +
+  geom_sf(aes(fill = FoodAccess), color = "grey", alpha = 0.7) +
+  geom_sf(data = TLI_pt %>% filter(State == "Kansas"), 
+          aes(size = TractLOWI)) +
+  scale_fill_viridis_d(name = "Food Accessibility") +
+  scale_size_continuous(name = "Low Income Tract", guide = "legend") +
+  labs(title = "Food Accessibility and Low Income Tracts Across Census Tracts in Kansas") +
+  theme_minimal() +
+  theme(axis.text = element_blank(), axis.title = element_blank(), 
+        legend.position = "bottom",
+        legend.key.size = unit(0.5, "cm")) +
+   ggspatial::annotation_scale(
+    location = "bl",
+    bar_cols = c("grey60", "white"),
+    text_family = "ArcherPro Book") +
+  ggspatial::annotation_north_arrow(
+    location = "tr", which_north = "true",
+    pad_x = unit(0.4, "in"), pad_y = unit(0.4, "in"),
+    style = ggspatial::north_arrow_nautical(
+      fill = c("grey40", "white"),
+      line_col = "grey20",
+      text_family = "ArcherPro Book"))
+```
+
+
+### Question 3:
+
+Here, I created 3 seperat maps using base R plot(), ggplot and tmap to show the prevalence of low food accessibility across the four US stateswhich I have been working on i.e. the state of Kansas, Oklahoma, Missouri, and Nebraska.
+
+```{r warning = FALSE, message = FALSE, error = FALSE}
+#Using base R to plot
+
+plot(StateBoundary[ ,"FoodAccess"], nbreaks = 3, breaks = "pretty",
+     col = c("Not Low Access" = "darkgreen", "Low Access" = "darkred"),
+     main = "Food Accessibility across 4 US States",
+     key.pos = 1)
+legend("bottomright", legend = c("Not Low Access", "Low Access"), fill = c("green", "darkred"))
+
+
+
+#Using ggplot
+
+StateBoundary %>% 
+  ggplot() +
+  geom_sf(aes(fill = FoodAccess), alpha = 0.7, col="black") +
+  labs(title = "Prevalence of low food accessibility across US states") +
+  theme_minimal() +
+  theme(axis.text = element_blank(), legend.position = "right") +
+  guides(fill = guide_legend(title = "Food accessibility \nacross US states", 
+                             title.size = 0.5)) +
+  scale_fill_viridis_d(option="magma", begin=0.25, na.value = "grey")+
+   geom_sf(data = US_State1, 
+          fill = NA, color = "black", size = 1) +
+  geom_sf_label(data = US_State1, aes(label = NAME), label.size = 0.005, label.padding = unit(0.005, "lines"))
+
+
+
+#Using tmap
+
+tmap_mode("plot")
+
+StateBoundary %>%
+  qtm(fill = "FoodAccess",
+       fill.title = "Food accessibility\nacross US states",
+       legend.outside.position = "bottom",
+       title = "Prevalence of low food accessibility across US states", 
+       style = "col_blind") +
+  tm_layout(main.title.size = 3.5, 
+            main.title.color = "darkblue",
+            frame = FALSE,
+            inner.margins = c(0.1, 0.1, 0.1, 0.1)) +
+  tm_borders(lwd = 0.5, col = "grey") +
+  tm_legend(outside.position = "bottom", 
+            text.size = 0.8, 
+            bg.color = "white")+
+  tm_compass() +
+  tm_scale_bar()
+
+
+```
+
+
+
+### Question 4: 
+
+Finally, I created an interactive map showing information on food accessibility and Median Family income across counties using Stadia.AlidadeSmoothDark as the basemap. When the cursor hovers above each bubble, it give a number 40 and althoght I tried to figure out why, I couldn't.
+
+
+```{r warning = FALSE, message = FALSE, error = FALSE}
+#Make interactive map
+
+tmap_mode("view")
+
+
+tm_basemap("Stadia.AlidadeSmoothDark") + 
+  tm_shape(StateBoundary  %>% filter(State == "Oklahoma")) +
+  tm_borders(lwd = 0.5, col = "white") +
+  tm_bubbles(size = "MedianFamilyIncome", col = "steelblue", 
+             popup.vars = c("LAhalfand10", "FoodAccess")) +
+  tm_text("County", size = 1, root = 4, col = "black")
+```
+
